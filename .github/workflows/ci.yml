@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-lockfile:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Commit updated lockfile
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet bun.lock; then
+            echo "No lockfile changes"
+            exit 0
+          fi
+          CONTENT=$(base64 -w0 bun.lock)
+          HEAD_OID=$(git rev-parse HEAD)
+          gh api graphql -f query='
+            mutation($input: CreateCommitOnBranchInput!) {
+              createCommitOnBranch(input: $input) {
+                commit { url }
+              }
+            }
+          ' -f "input[branchRef][repositoryNameWithOwner]=${{ github.repository }}" \
+            -f "input[branchRef][branchName]=${{ github.head_ref }}" \
+            -f "input[expectedHeadOid]=${HEAD_OID}" \
+            -f "input[message][headline]=deps: update bun.lock" \
+            -f "input[fileChanges][additions][0][path]=bun.lock" \
+            -f "input[fileChanges][additions][0][contents]=${CONTENT}"
+
+  test:
+    needs: [update-lockfile]
+    if: ${{ !cancelled() && needs.update-lockfile.result != 'failure' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        bun-version: ["1.3"]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.actor == 'dependabot[bot]' && github.head_ref || '' }}
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ matrix.bun-version }}
+      - name: Run tests
+        run: bun test --coverage
+
+  lint:
+    needs: [update-lockfile]
+    if: ${{ !cancelled() && needs.update-lockfile.result != 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.actor == 'dependabot[bot]' && github.head_ref || '' }}
+      - uses: ./.github/actions/setup-bun
+      - name: Biome check
+        run: bunx biome check .
+
+  typecheck:
+    needs: [update-lockfile]
+    if: ${{ !cancelled() && needs.update-lockfile.result != 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.actor == 'dependabot[bot]' && github.head_ref || '' }}
+      - uses: ./.github/actions/setup-bun
+      - name: TypeScript
+        run: bun run typecheck

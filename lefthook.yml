@@ -1,0 +1,11 @@
+# Pre-commit gate: enforces the full automated test pyramid.
+# Order reflects shift-left principle — cheapest checks first.
+pre-commit:
+  commands:
+    check:
+      run: bun run check
+      stage_fixed: true
+    typecheck:
+      run: bun run typecheck
+    test:
+      run: bun test
