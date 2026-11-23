@@ -57,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Generate SARIF report
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: repo
           format: sarif
@@ -69,7 +69,7 @@ jobs:
           sarif_file: trivy-results.sarif
           category: trivy
       - name: Fail on CRITICAL/HIGH vulnerabilities
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: repo
           format: table
